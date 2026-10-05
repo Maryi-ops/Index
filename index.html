@@ -104,11 +104,15 @@
 
       <!-- ========== TARJETAS DE GATOS (derecha) ========== -->
       <div class="col-12 col-lg-8">
-        <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 mb-3">
           <h2 class="mb-0">Gatos Registrados</h2>
-          <button class="btn btn-outline-secondary btn-sm" id="btnRecargar">
-            Actualizar
-          </button>
+          <div class="d-flex gap-2 flex-grow-1 flex-md-grow-0" style="max-width: 450px;">
+            <input type="search" class="form-control form-control-sm" id="inputBusqueda"
+              placeholder="Buscar por nombre, raza, edad, peso o fecha...">
+            <button class="btn btn-outline-secondary btn-sm" id="btnRecargar" title="Mostrar todos">
+              Actualizar
+            </button>
+          </div>
         </div>
         <div id="listaGatos" class="row g-3">
           <div class="col-12 loading">Cargando gatos...</div>
@@ -120,6 +124,7 @@
 
   <script>
     const BACKEND_URL = "https://backend-gatitos2.onrender.com";
+    let gatosRegistrados = [];
 
     // ========== Vista previa de imagen ==========
     document.getElementById("imagen").addEventListener("change", (e) => {
@@ -231,10 +236,108 @@
       document.getElementById("btnCancelar").classList.add("d-none");
     }
 
+    // ========== Eliminar gato ==========
+    async function eliminarGato(id, nombre) {
+      if (!confirm(`¿Quieres eliminar a ${nombre}?`)) {
+        return;
+      }
+
+      try {
+        const respuesta = await fetch(`${BACKEND_URL}/gato/${id}`, {
+          method: "DELETE"
+        });
+        const data = await respuesta.json();
+
+        if (!respuesta.ok) {
+          throw new Error(data.mensaje || "Error al eliminar el gato");
+        }
+
+        cargarGatos();
+      } catch (error) {
+        console.error(error);
+        alert(error.message || "Error de conexión con el servidor.");
+      }
+    }
+
     // Botón Cancelar edición
     document.getElementById("btnCancelar").addEventListener("click", () => {
       limpiarFormulario();
     });
+
+    function renderizarGatos(gatos) {
+      const contenedor = document.getElementById("listaGatos");
+      contenedor.innerHTML = gatos.map(gato => `
+  <div class="col-12 col-sm-6 col-xl-4">
+    <div class="card gato-card h-100">
+      <img src="${gato.imagenUrl}" class="card-img-top gato-img" alt="${gato.nombre}"
+        onerror="this.src='https://placehold.co/400x300?text=Sin+imagen'">
+      <div class="card-body d-flex flex-column">
+        <h5 class="card-title mb-1">${gato.nombre}</h5>
+        <p class="card-text mb-1">
+          <small class="text-muted">
+            ${gato.raza} · ${gato.edad} años · ${gato.peso} kg
+          </small>
+        </p>
+        <p class="card-text">
+          <small class="text-muted">
+            Registrado: ${new Date(gato.fecha).toLocaleDateString('es-ES')}
+          </small>
+        </p>
+        <div class="mt-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-primary flex-fill"
+            onclick='editarGato(${JSON.stringify(gato)})'>
+            Actualizar
+          </button>
+          <button class="btn btn-sm btn-outline-danger flex-fill"
+            onclick="eliminarGato('${gato.id}', '${gato.nombre}')">
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+`).join("");
+    }
+
+    function normalizarTexto(texto) {
+      return String(texto ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+    }
+
+    // ========== Búsqueda de gatos ==========
+    function buscarGatos() {
+      const termino = document.getElementById("inputBusqueda").value.trim();
+      const contenedor = document.getElementById("listaGatos");
+      const terminoNormalizado = normalizarTexto(termino);
+      const gatosFiltrados = gatosRegistrados.filter(gato => {
+        const fecha = gato.fecha ? new Date(gato.fecha).toLocaleDateString("es-ES") : "";
+        const datosGato = normalizarTexto([
+          gato.nombre,
+          gato.raza,
+          gato.edad,
+          gato.peso,
+          gato.fecha,
+          fecha
+        ].join(" "));
+
+        return datosGato.includes(terminoNormalizado);
+      });
+
+      if (gatosFiltrados.length === 0) {
+        contenedor.innerHTML = termino
+          ? `<div class="col-12"><div class="alert alert-warning text-center">No se encontraron gatos que coincidan con "<strong></strong>".</div></div>`
+          : `<div class="col-12"><div class="alert alert-info text-center">Aún no hay gatos registrados.</div></div>`;
+        const terminoMostrado = contenedor.querySelector("strong");
+        if (terminoMostrado) {
+          terminoMostrado.textContent = termino;
+        }
+        return;
+      }
+
+      renderizarGatos(gatosFiltrados);
+    }
 
     // ========== Cargar y mostrar gatos ==========
     async function cargarGatos() {
@@ -254,41 +357,8 @@
           throw new Error("La respuesta del servidor no contiene una lista de gatos");
         }
 
-        if (gatos.length === 0) {
-          contenedor.innerHTML = `
-        <div class="col-12">
-          <div class="alert alert-info text-center">
-            Aún no hay gatos registrados.
-          </div>
-        </div>`;
-          return;
-        }
-
-        contenedor.innerHTML = gatos.map(gato => `
-      <div class="col-12 col-sm-6 col-xl-4">
-        <div class="card gato-card h-100">
-          <img src="${gato.imagenUrl}" class="card-img-top gato-img" alt="${gato.nombre}"
-               onerror="this.src='https://placehold.co/400x300?text=Sin+Imagen'">
-          <div class="card-body d-flex flex-column">
-            <h5 class="card-title mb-1">${gato.nombre}</h5>
-            <p class="card-text mb-1">
-              <small class="text-muted">
-                ${gato.raza} • ${gato.edad} años • ${gato.peso} kg
-              </small>
-            </p>
-            <p class="card-text">
-              <small class="text-muted">
-                Registrado: ${new Date(gato.fecha).toLocaleDateString('es-ES')}
-              </small>
-            </p>
-            <button class="btn btn-sm btn-outline-primary mt-auto"
-                    onclick='editarGato(${JSON.stringify(gato)})'>
-              Actualizar
-            </button>
-          </div>
-        </div>
-      </div>
-    `).join("");
+        gatosRegistrados = gatos;
+        buscarGatos();
       } catch (error) {
         console.error(error);
         contenedor.innerHTML = `
@@ -301,7 +371,11 @@
     }
 
     // Botón de recargar
-    document.getElementById("btnRecargar").addEventListener("click", cargarGatos);
+    document.getElementById("inputBusqueda").addEventListener("input", buscarGatos);
+    document.getElementById("btnRecargar").addEventListener("click", () => {
+      document.getElementById("inputBusqueda").value = "";
+      cargarGatos();
+    });
 
     // Cargar gatos al iniciar la página
     cargarGatos();
